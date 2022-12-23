@@ -1,0 +1,6 @@
+<RCC>
+    <qresource prefix="/">
+        <file>icons/document-open.svg</file>
+        <file>icons/view-refresh.svg</file>
+    </qresource>
+</RCC>
