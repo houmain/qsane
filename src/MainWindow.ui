@@ -44,7 +44,7 @@
          <rect>
           <x>0</x>
           <y>0</y>
-          <width>201</width>
+          <width>203</width>
           <height>645</height>
          </rect>
         </property>
@@ -199,10 +199,43 @@
                  </widget>
                 </item>
                 <item>
-                 <widget class="QSpinBox" name="spinBoxIndex">
-                  <property name="value">
-                   <number>1</number>
-                  </property>
+                 <widget class="QWidget" name="widgetIndex" native="true">
+                  <layout class="QHBoxLayout" name="horizontalLayout_2">
+                   <property name="leftMargin">
+                    <number>0</number>
+                   </property>
+                   <property name="topMargin">
+                    <number>0</number>
+                   </property>
+                   <property name="rightMargin">
+                    <number>0</number>
+                   </property>
+                   <property name="bottomMargin">
+                    <number>0</number>
+                   </property>
+                   <item>
+                    <widget class="QLineEdit" name="indexSeparator">
+                     <property name="maximumSize">
+                      <size>
+                       <width>20</width>
+                       <height>16777215</height>
+                      </size>
+                     </property>
+                     <property name="font">
+                      <font>
+                       <family>Monospace</family>
+                      </font>
+                     </property>
+                    </widget>
+                   </item>
+                   <item>
+                    <widget class="QSpinBox" name="spinBoxIndex">
+                     <property name="value">
+                      <number>1</number>
+                     </property>
+                    </widget>
+                   </item>
+                  </layout>
                  </widget>
                 </item>
                </layout>
@@ -230,18 +263,29 @@
            <property name="title">
             <string>Device Properties</string>
            </property>
-           <layout class="QVBoxLayout" name="verticalLayout_6">
-            <item>
-             <widget class="QCheckBox" name="checkBoxAdvanced">
-              <property name="text">
-               <string>Show Advanced</string>
-              </property>
-             </widget>
-            </item>
-            <item>
-             <widget class="DevicePropertyBrowser" name="propertyBrowser" native="true"/>
-            </item>
-           </layout>
+           <widget class="QCheckBox" name="checkBoxAdvanced">
+            <property name="geometry">
+             <rect>
+              <x>12</x>
+              <y>31</y>
+              <width>117</width>
+              <height>22</height>
+             </rect>
+            </property>
+            <property name="text">
+             <string>Show Advanced</string>
+            </property>
+           </widget>
+           <widget class="DevicePropertyBrowser" name="propertyBrowser" native="true">
+            <property name="geometry">
+             <rect>
+              <x>-50</x>
+              <y>70</y>
+              <width>161</width>
+              <height>183</height>
+             </rect>
+            </property>
+           </widget>
           </widget>
          </item>
          <item>

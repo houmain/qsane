@@ -31,7 +31,7 @@ MainWindow::MainWindow(QWidget *parent)
     mCropRect = new CropRect();
 
     ui->groupBoxProperties->setVisible(false);
-    ui->spinBoxIndex->setEnabled(false);
+    ui->widgetIndex->setEnabled(false);
 
     connect(ui->checkBoxAdvanced, &QCheckBox::toggled,
         ui->propertyBrowser, &DevicePropertyBrowser::setShowAdvanced);
@@ -41,7 +41,7 @@ MainWindow::MainWindow(QWidget *parent)
     connect(ui->buttonBrowse, &QPushButton::clicked,
         this, &MainWindow::browse);
     connect(ui->checkBoxIndexed, &QCheckBox::toggled,
-        ui->spinBoxIndex, &QSpinBox::setEnabled);
+        ui->widgetIndex, &QWidget::setEnabled);
     connect(ui->comboFolder, &QComboBox::currentTextChanged,
         this, &MainWindow::enableSaveButton);
     connect(ui->title, &QLineEdit::textChanged,
@@ -82,6 +82,7 @@ void MainWindow::readSettings()
         showMaximized();
 
     ui->title->setText(s.value("title").toString());
+    ui->indexSeparator->setText(s.value("indexSeparator", " ").toString());
     ui->checkBoxIndexed->setChecked(s.value("indexed").toBool());
     const auto folders = s.value("recentFolders", QStringList()).toStringList();
     for (const auto &path : folders)
@@ -100,6 +101,7 @@ void MainWindow::writeSettings()
 
     s.setValue("resolution", ui->comboResolution->currentText().toInt());
     s.setValue("title", ui->title->text());
+    s.setValue("indexSeparator", ui->indexSeparator->text());
     s.setValue("indexed", ui->checkBoxIndexed->isChecked());
     auto folders = QStringList();
     for (auto i = ui->comboFolder->count() - 1; i >= 0; --i)
@@ -267,6 +269,7 @@ void MainWindow::browse()
 {
     auto dialog = QFileDialog();
     dialog.setFileMode(QFileDialog::Directory);
+    dialog.setDirectory(ui->comboFolder->currentData().toString());
     if (dialog.exec())
         addFolder(dialog.directory().path());
 }
@@ -297,8 +300,10 @@ void MainWindow::save()
     const auto index = ui->spinBoxIndex->value();
 
     auto filename = ui->title->text();
-    if (ui->checkBoxIndexed->isChecked())
+    if (ui->checkBoxIndexed->isChecked()) {
+        filename += ui->indexSeparator->text();
         filename += QString::number(index);
+    }
     filename += ".jpg";
 
     if (QFileInfo(dir.filePath(filename)).exists())
