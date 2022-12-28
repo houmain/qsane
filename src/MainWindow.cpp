@@ -67,7 +67,7 @@ MainWindow::~MainWindow()
 {
     delete mWorkerThread;
     delete ui;
-    mScanner.reset();
+    closeScanner();
     shutdownSane();
 }
 
@@ -132,8 +132,9 @@ void MainWindow::closeEvent(QCloseEvent *event)
 
 void MainWindow::refreshDevices()
 {
-    auto devices = enumerateDevices();
+    closeScanner();
 
+    const auto devices = enumerateDevices();
     ui->comboDevice->clear();
     for (const auto &device : devices)
         ui->comboDevice->addItem(device.vendor + " " + device.model, device.name);
@@ -142,7 +143,13 @@ void MainWindow::refreshDevices()
 void MainWindow::handleDeviceIndexChanged(int index)
 {
     const auto deviceName = ui->comboDevice->itemData(index).toString();
-    disableScannerBindings();
+    if (!deviceName.isEmpty())
+        openScanner(deviceName);
+}
+
+void MainWindow::openScanner(const QString &deviceName)
+{
+    closeScanner();
 
     mScanner.reset(new Scanner());
     mScanner->open(deviceName);
@@ -150,6 +157,12 @@ void MainWindow::handleDeviceIndexChanged(int index)
     refreshControls();
     ui->comboResolution->setCurrentText(mSettings->value("resolution").toString());
     enableScannerBindings();
+}
+
+void MainWindow::closeScanner()
+{
+    disableScannerBindings();
+    mScanner.reset();
 }
 
 void MainWindow::refreshControls()

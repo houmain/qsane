@@ -25,10 +25,11 @@ int main(int argc, char *argv[])
 #endif
 
     auto locale = QLocale();
-    auto translationsLocation = QStringLiteral("../share/qsane/translations");
+    auto translationsLocation =
+        QCoreApplication::applicationDirPath() + "../share/qsane/translations";
 #if !defined(NDEBUG)
     locale = QLocale("de");
-    translationsLocation = QStringLiteral(".");
+    translationsLocation = ".";
 #endif
 
     auto qtTranslator = QTranslator();

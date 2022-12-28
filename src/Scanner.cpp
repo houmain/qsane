@@ -129,6 +129,8 @@ void shutdownSane()
 
 QList<DeviceInfo> enumerateDevices()
 {
+    shutdownSane();
+
     if (!initializeSane())
         return { };
 
@@ -146,10 +148,6 @@ QList<DeviceInfo> enumerateDevices()
             device.type,
         };
     }
-
-    if (devices.isEmpty())
-        shutdownSane();
-
     return devices;
 }
 

@@ -45,6 +45,8 @@ protected:
     void closeEvent(QCloseEvent *event);
 
 private:
+    void openScanner(const QString &deviceName);
+    void closeScanner();
     void addFolder(const QString &path);
     void readSettings();
     void writeSettings();
