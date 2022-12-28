@@ -24,18 +24,18 @@ int main(int argc, char *argv[])
                 );
 #endif
 
-    auto locale = QLocale();
-    auto translationsLocation =
-        QCoreApplication::applicationDirPath() + "../share/qsane/translations";
-#if !defined(NDEBUG)
-    locale = QLocale("de");
-    translationsLocation = ".";
-#endif
-
     auto qtTranslator = QTranslator();
     auto appTranslator = QTranslator();
     auto app = QApplication(argc, argv);
     try {
+        auto locale = QLocale();
+        auto translationsDir = QCoreApplication::applicationDirPath();
+        translationsDir += "/../share/qsane/translations";
+#if !defined(NDEBUG)
+        locale = QLocale("de");
+        translationsDir = ".";
+#endif
+
         if (qtTranslator.load(locale,
                 QStringLiteral("qt"),
                 QStringLiteral("_"),
@@ -45,7 +45,7 @@ int main(int argc, char *argv[])
         if (appTranslator.load(locale,
                 QStringLiteral("lang"),
                 QStringLiteral("_"),
-                translationsLocation))
+                translationsDir))
             app.installTranslator(&appTranslator);
 
         auto window = MainWindow();

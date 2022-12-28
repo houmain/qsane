@@ -141,6 +141,8 @@ QList<DeviceInfo> enumerateDevices()
     auto devices = QList<DeviceInfo>();
     for (auto i = 0; device_list[i]; ++i) {
         auto &device = *device_list[i];
+        if (device.type == QStringLiteral("virtual device"))
+            continue;
         devices += DeviceInfo{
             device.name,
             device.vendor,
