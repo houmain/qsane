@@ -4,6 +4,10 @@
 <context>
     <name>MainWindow</name>
     <message>
+        <source>Photo Scanner</source>
+        <translation>Foto-Scanner</translation>
+    </message>
+    <message>
         <source>Resolution</source>
         <translation>Auflösung</translation>
     </message>

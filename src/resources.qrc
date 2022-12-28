@@ -2,5 +2,6 @@
     <qresource prefix="/">
         <file>icons/document-open.svg</file>
         <file>icons/view-refresh.svg</file>
+        <file>icons/qsane.png</file>
     </qresource>
 </RCC>

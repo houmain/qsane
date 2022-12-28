@@ -78,3 +78,10 @@ add_dependencies(${PROJECT_NAME} translations)
 target_link_libraries(${PROJECT_NAME} PRIVATE Qt${QT_VERSION_MAJOR}::Widgets sane)
 
 target_include_directories(${PROJECT_NAME} PRIVATE src libs)
+
+# install
+set(DOC_FILES LICENSE)
+install(TARGETS ${PROJECT_NAME} DESTINATION "bin" COMPONENT Application)
+install(FILES ${DOC_FILES} DESTINATION "share/qsane" COMPONENT Application)
+install(DIRECTORY share DESTINATION . COMPONENT Application)
+

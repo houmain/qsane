@@ -18,6 +18,11 @@ MainWindow::MainWindow(QWidget *parent)
     ui->setupUi(this);
     ui->retranslateUi(this);
 
+    setWindowTitle(tr("Photo Scanner"));
+
+    auto icon = QIcon(":icons/qsane.png");
+    setWindowIcon(icon);
+
     mScene = ui->pageView->scene();
     mPreviewItem = new GraphicsImageItem();
     mScene->addItem(mPreviewItem);

@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=Photo Scanner
+Name[de]=Foto-Scanner
+Comment[de]=Eine digitale Kopie Ihrer Fotos erstellen
+Comment=Make a digital copy of your photos
+Exec=qsane
+Icon=qsane
+Terminal=false
+Categories=Graphics;
+StartupNotify=true
+Keywords=scan;scanner;
+

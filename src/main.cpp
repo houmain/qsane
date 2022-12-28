@@ -48,7 +48,6 @@ int main(int argc, char *argv[])
             app.installTranslator(&appTranslator);
 
         auto window = MainWindow();
-        window.setWindowTitle(QCoreApplication::applicationName());
         window.show();
         app.exec();
     }
