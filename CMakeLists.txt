@@ -83,5 +83,6 @@ target_include_directories(${PROJECT_NAME} PRIVATE src libs)
 set(DOC_FILES LICENSE)
 install(TARGETS ${PROJECT_NAME} DESTINATION "bin" COMPONENT Application)
 install(FILES ${DOC_FILES} DESTINATION "share/qsane" COMPONENT Application)
+install(FILES ${QM_FILES} DESTINATION "share/qsane/translations" COMPONENT Application)
 install(DIRECTORY share DESTINATION . COMPONENT Application)
 
