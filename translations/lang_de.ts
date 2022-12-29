@@ -37,7 +37,7 @@
     </message>
     <message>
         <source>Index</source>
-        <translation>Index</translation>
+        <translation>Nummer</translation>
     </message>
     <message>
         <source>A file named "%1" already exists.\nDo you want to replace it?</source>

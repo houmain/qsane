@@ -267,11 +267,10 @@ void MainWindow::handleScanLineScanned(QByteArray scanLine)
 
 void MainWindow::browse()
 {
-    auto dialog = QFileDialog();
-    dialog.setFileMode(QFileDialog::Directory);
-    dialog.setDirectory(ui->comboFolder->currentData().toString());
-    if (dialog.exec())
-        addFolder(dialog.directory().path());
+    const auto path = QFileDialog::getExistingDirectory(
+        this, {}, ui->comboFolder->currentData().toString());
+    if (!path.isEmpty())
+        addFolder(path);
 }
 
 void MainWindow::addFolder(const QString &path)
