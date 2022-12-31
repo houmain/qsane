@@ -4,6 +4,9 @@
 #include <cstring>
 #include <cmath>
 #include <QSet>
+#include <QTextStream>
+
+QTextStream& qStderr();
 
 namespace
 {
@@ -28,9 +31,10 @@ namespace
         return g_sane_version_code;
     }
 
-    [[noreturn]] void error(SANE_Status status, const char *action)
+    void error(SANE_Status status, const char *action)
     {
-        throw SaneException(status, action);
+        qStderr() << action << " failed: " << sane_strstatus(status) << '\n';
+        qStderr().flush();
     }
 
     void check(SANE_Status status, const char *action)
@@ -60,15 +64,18 @@ namespace
             return toPair(min, max);
         }
         error(SANE_STATUS_INVAL, "reading area bounds");
+        return { };
     }
 
     template<typename F>
     void forEachValueInList(const SANE_Option_Descriptor &option, F&& function)
     {
-        forEachWordInList(option, [&](auto word) {
-            function(option.type == SANE_TYPE_FIXED ?
-                SANE_UNFIX(word) : static_cast<double>(word));
-        });
+        if (option.constraint_type == SANE_CONSTRAINT_WORD_LIST) {
+            forEachWordInList(option, [&](auto word) {
+                function(option.type == SANE_TYPE_FIXED ?
+                    SANE_UNFIX(word) : static_cast<double>(word));
+            });
+        }
     }
 
     SANE_Word getNthWord(const SANE_Option_Descriptor &option, int index)
@@ -107,17 +114,6 @@ namespace
         return 0;
     }
 } // namespace
-
-SaneException::SaneException(SANE_Status status, const char *message)
-    : std::runtime_error(message)
-    , mStatus(status)
-{
-}
-
-const char *SaneException::status_msg() const
-{
-    return sane_strstatus(mStatus);
-}
 
 void shutdownSane()
 {
@@ -195,14 +191,25 @@ void Scanner::controlGet(const Option &option, void *value, SANE_Int size) const
 
 bool Scanner::hasOption(const QString &name) const
 {
-    return mOptions.contains(name);
+    const auto option = mOptions[name];
+    return option.desc &&
+        SANE_OPTION_IS_ACTIVE(option.desc->cap);
+}
+
+bool Scanner::hasSettableOption(const QString &name) const
+{
+    const auto option = mOptions[name];
+    return option.desc &&
+        SANE_OPTION_IS_SETTABLE(option.desc->cap) &&
+        SANE_OPTION_IS_ACTIVE(option.desc->cap);
 }
 
 void Scanner::forEachOption(
         std::function<void(const SANE_Option_Descriptor&)> callback) const
 {
     for (const auto option : mOptions)
-        callback(*option.desc);
+        if (auto desc = option.desc)
+            callback(*desc);
 }
 
 const SANE_Option_Descriptor *Scanner::getOption(const QString &name) const
@@ -343,17 +350,21 @@ void Scanner::restoreScanMode()
 
 void Scanner::setResolution(const QPointF &resolution)
 {
-    setOptionValue(WellKnownOption::resolution,
-        std::min(resolution.x(), resolution.y()));
-    if (hasOption(WellKnownOption::x_resolution))
+    if (hasSettableOption(WellKnownOption::resolution))
+        setOptionValue(WellKnownOption::resolution,
+            std::min(resolution.x(), resolution.y()));
+    if (hasSettableOption(WellKnownOption::x_resolution))
         setOptionValue(WellKnownOption::x_resolution, resolution.x());
-    if (hasOption(WellKnownOption::y_resolution))
+    if (hasSettableOption(WellKnownOption::y_resolution))
         setOptionValue(WellKnownOption::y_resolution, resolution.y());
 }
 
 QPointF Scanner::getResolution() const
 {
-    auto xResolution = getOptionValue(WellKnownOption::resolution).toDouble();
+    auto resolution = 0.0;
+    if (hasOption(WellKnownOption::resolution))
+        resolution = getOptionValue(WellKnownOption::resolution).toDouble();
+    auto xResolution = resolution;
     auto yResolution = xResolution;
     if (hasOption(WellKnownOption::x_resolution))
         xResolution = getOptionValue(WellKnownOption::x_resolution).toDouble();
@@ -364,26 +375,39 @@ QPointF Scanner::getResolution() const
 
 QList<double> Scanner::getUniformResolutions() const
 {
-    const auto getValues = [](const auto &desc) {
-        auto values = QSet<double>();
-        forEachValueInList(desc, [&](auto value) { values.insert(value); });
-        return values;
-    };
+    const auto &resolution = *getOption(WellKnownOption::resolution);
+    if (resolution.constraint_type == SANE_CONSTRAINT_RANGE) {
+        // TODO: improve list
+        const auto &range = *resolution.constraint.range;
+        const auto step = (range.max - range.min) / 10;
+        auto resolutions = QList<double>();
+        for (auto i = range.min; i < range.max; i += step)
+            resolutions.append(i);
+        resolutions.append(range.max);
+        return resolutions;
+    }
+    else if (resolution.constraint_type == SANE_CONSTRAINT_WORD_LIST) {
+        const auto getValues = [](const auto &desc) {
+            auto values = QSet<double>();
+            forEachValueInList(desc, [&](auto value) { values.insert(value); });
+            return values;
+        };
+        auto resolutions = getValues(resolution);
+        auto xResolutions = resolutions;
+        auto yResolutions = resolutions;
+        if (hasOption(WellKnownOption::x_resolution))
+            xResolutions = getValues(*getOption(WellKnownOption::x_resolution));
+        if (hasOption(WellKnownOption::y_resolution))
+            yResolutions = getValues(*getOption(WellKnownOption::y_resolution));
+        resolutions = xResolutions.intersect(yResolutions);
+        if (resolutions.empty())
+            resolutions.insert(*xResolutions.begin());
 
-    auto resolutions = getValues(*getOption(WellKnownOption::resolution));
-    auto xResolutions = resolutions;
-    auto yResolutions = resolutions;
-    if (hasOption(WellKnownOption::x_resolution))
-        xResolutions = getValues(*getOption(WellKnownOption::x_resolution));
-    if (hasOption(WellKnownOption::y_resolution))
-        yResolutions = getValues(*getOption(WellKnownOption::y_resolution));
-    resolutions = xResolutions.intersect(yResolutions);
-    if (resolutions.empty())
-        resolutions.insert(*xResolutions.begin());
-
-    auto list = QList<double>(resolutions.begin(), resolutions.end());
-    std::sort(list.begin(), list.end());
-    return list;
+        auto list = QList<double>(resolutions.begin(), resolutions.end());
+        std::sort(list.begin(), list.end());
+        return list;
+    }
+    return { };
 }
 
 void Scanner::setBounds(const QRectF &bounds)

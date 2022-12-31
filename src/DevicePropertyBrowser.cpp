@@ -84,14 +84,13 @@ void DevicePropertyBrowser::setScanner(Scanner *scanner)
         });
 
     refreshProperties();
-    updatePropertyVisibility();
 }
 
 void DevicePropertyBrowser::setShowAdvanced(bool showAdvanced)
 {
     if (mShowAdvanced != showAdvanced) {
         mShowAdvanced = showAdvanced;
-        updatePropertyVisibility();
+        refreshProperties();
     }
 }
 
@@ -152,23 +151,15 @@ void DevicePropertyBrowser::refreshProperties()
     disconnect(mPropertyManager, &QtVariantPropertyManager::valueChanged,
         this, &DevicePropertyBrowser::handleValueChanged);
 
-    for (auto property : qAsConst(mProperties))
-        if (auto option = mScanner->getOption(property->whatsThis()))
-            refreshProperty(static_cast<QtVariantProperty&>(*property), *option);
-
-    connect(mPropertyManager, &QtVariantPropertyManager::valueChanged,
-        this, &DevicePropertyBrowser::handleValueChanged);
-}
-
-void DevicePropertyBrowser::updatePropertyVisibility()
-{
     auto activeProperties = QList<QtProperty *>();
     for (auto property : qAsConst(mProperties))
         if (auto option = mScanner->getOption(property->whatsThis())) {
             const auto advanced = (option->cap & SANE_CAP_ADVANCED) != 0;
             const auto inactive = (option->cap & SANE_CAP_INACTIVE) != 0;
-            if (!inactive && (!advanced || mShowAdvanced))
+            if (!inactive && (!advanced || mShowAdvanced)) {
                 activeProperties.append(property);
+                refreshProperty(static_cast<QtVariantProperty&>(*property), *option);
+            }
         }
 
     if (activeProperties != properties()) {
@@ -176,13 +167,15 @@ void DevicePropertyBrowser::updatePropertyVisibility()
         for (auto property : qAsConst(activeProperties))
             addProperty(property);
     }
+
+    connect(mPropertyManager, &QtVariantPropertyManager::valueChanged,
+        this, &DevicePropertyBrowser::handleValueChanged);
 }
 
 void DevicePropertyBrowser::handleValueChanged(QtProperty *property, const QVariant &value)
 {
     mScanner->setOptionValue(property->whatsThis(), value, true);
     refreshProperties();
-    updatePropertyVisibility();
 
     Q_EMIT valueChanged(property, value);
 }

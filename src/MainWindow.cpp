@@ -213,9 +213,11 @@ void MainWindow::disableScannerBindings()
 
 void MainWindow::handleResolutionChanged(int index)
 {
-    auto resolution = ui->comboResolution->itemData(index).toDouble();
-    mScanner->setResolution({ resolution, resolution });
-    ui->propertyBrowser->refreshProperties();
+    const auto resolution = ui->comboResolution->itemData(index).toDouble();
+    if (resolution) {
+        mScanner->setResolution({ resolution, resolution });
+        ui->propertyBrowser->refreshProperties();
+    }
 }
 
 void MainWindow::handlePageViewMousePressed(const QPointF &position)
@@ -253,7 +255,7 @@ void MainWindow::handleScanStarted(QImage image)
     mScanningItem->setImage(image);
 }
 
-void MainWindow::handleScanComplete(int status)
+void MainWindow::handleScanComplete(bool succeeded)
 {
     mScanningItem = nullptr;
     enableScannerBindings();
@@ -305,7 +307,7 @@ void MainWindow::save()
     }
     filename += ".jpg";
 
-    if (QFileInfo(dir.filePath(filename)).exists())
+    if (QFileInfo::exists(dir.filePath(filename)))
         if (QMessageBox(QMessageBox::Warning, QCoreApplication::applicationName(),
             tr("A file named \"{}\" already exists. Do you want to replace it?").arg(filename),
             QMessageBox::Cancel | QMessageBox::Yes).exec() != QMessageBox::Yes)

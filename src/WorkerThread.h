@@ -20,7 +20,7 @@ Q_SIGNALS:
     void doScan(Scanner *scanner, bool preview, QPrivateSignal);
     void doCancelScan(QPrivateSignal);
     void scanStarted(QImage image);
-    void scanComplete(int status);
+    void scanComplete(bool succeeded);
     void scanLineScanned(QByteArray scanLine);
 
 private:

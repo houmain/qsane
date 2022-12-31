@@ -1,20 +1,16 @@
 #include "MainWindow.h"
 #include <QApplication>
-#include <QMessageBox>
 #include <QTranslator>
 #include <QLibraryInfo>
+#include <QTextStream>
 
-namespace
+QTextStream &qStderr()
 {
-    void showUnhandledExceptionMessage(const QString &message)
-    {
-        const auto title = QCoreApplication::applicationName() +
-            " - Unhandled exception";
-        QMessageBox(QMessageBox::Critical, title, message).exec();
-    }
-} // namespace
+    static auto stream = QTextStream(stderr);
+    return stream;
+}
 
-int main(int argc, char *argv[])
+int main(int argc, char *argv[]) try
 {
     QCoreApplication::setOrganizationName("qsane");
     QCoreApplication::setApplicationName("QSane");
@@ -27,39 +23,32 @@ int main(int argc, char *argv[])
     auto qtTranslator = QTranslator();
     auto appTranslator = QTranslator();
     auto app = QApplication(argc, argv);
-    try {
-        auto locale = QLocale();
-        auto translationsDir = QCoreApplication::applicationDirPath();
-        translationsDir += "/../share/qsane/translations";
+
+    auto locale = QLocale();
+    auto translationsDir = QCoreApplication::applicationDirPath();
+    translationsDir += "/../share/qsane/translations";
 #if !defined(NDEBUG)
-        locale = QLocale("de");
-        translationsDir = ".";
+    locale = QLocale("de");
+    translationsDir = ".";
 #endif
 
-        if (qtTranslator.load(locale,
-                QStringLiteral("qt"),
-                QStringLiteral("_"),
-                QLibraryInfo::location(QLibraryInfo::TranslationsPath)))
-            app.installTranslator(&qtTranslator);
+    if (qtTranslator.load(locale,
+            QStringLiteral("qt"),
+            QStringLiteral("_"),
+            QLibraryInfo::location(QLibraryInfo::TranslationsPath)))
+        app.installTranslator(&qtTranslator);
 
-        if (appTranslator.load(locale,
-                QStringLiteral("lang"),
-                QStringLiteral("_"),
-                translationsDir))
-            app.installTranslator(&appTranslator);
+    if (appTranslator.load(locale,
+            QStringLiteral("lang"),
+            QStringLiteral("_"),
+            translationsDir))
+        app.installTranslator(&appTranslator);
 
-        auto window = MainWindow();
-        window.show();
-        app.exec();
-    }
-    catch (const SaneException &ex)
-    {
-        showUnhandledExceptionMessage(
-            QString(ex.what()) + " failed: " + ex.status_msg());
-    }
-    catch (const std::exception &ex)
-    {
-        showUnhandledExceptionMessage(ex.what());
-    }
+    auto window = MainWindow();
+    window.show();
+    app.exec();
 }
-
+catch (const std::exception &ex)
+{
+    qStderr() << "unhandled exception: " << ex.what() << '\n';
+}

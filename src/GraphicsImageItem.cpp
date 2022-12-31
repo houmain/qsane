@@ -36,8 +36,10 @@ void GraphicsImageItem::setNextScanLine(const QByteArray &scanline)
     prepareGeometryChange();
 
     const auto y = mNextScanLine++;
-    std::memcpy(mImage.scanLine(y), scanline.data(), scanline.size());
-    update(0, y, mImage.width(), 1);
+    if (y < mImage.height()) {
+        std::memcpy(mImage.scanLine(y), scanline.data(), scanline.size());
+        update(0, y, mImage.width(), 1);
+    }
 }
 
 void GraphicsImageItem::paint(QPainter *painter,

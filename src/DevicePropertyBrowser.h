@@ -30,7 +30,6 @@ private:
     void addOption(const SANE_Option_Descriptor &option);
     void refreshProperty(QtVariantProperty &property,
         const SANE_Option_Descriptor &option);
-    void updatePropertyVisibility();
 
     QtVariantPropertyManager* mPropertyManager;
     QList<QtProperty *> mProperties;

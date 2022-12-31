@@ -1,7 +1,6 @@
 #pragma once
 
 #include <QMainWindow>
-#include "Scanner.h"
 
 QT_BEGIN_NAMESPACE
 namespace Ui { class MainWindow; }
@@ -35,7 +34,7 @@ private Q_SLOTS:
     void enableSaveButton();
     void handleScanStarted(QImage image);
     void handleScanLineScanned(QByteArray scanLine);
-    void handleScanComplete(int status);
+    void handleScanComplete(bool succeeded);
     void handleResolutionChanged(int index);
     void handleCropRectTransforming(const QRectF &);
     void handlePageViewMousePressed(const QPointF &position);

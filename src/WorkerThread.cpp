@@ -1,5 +1,8 @@
 #include "WorkerThread.h"
 #include "Scanner.h"
+#include <QTextStream>
+
+QTextStream &qStderr();
 
 class Worker final : public QObject
 {
@@ -23,7 +26,7 @@ public Q_SLOTS:
 
     void cancelScan() noexcept
     {
-        complete(SANE_STATUS_CANCELLED);
+        complete(false);
     }
 
     void scanNextScanLine() noexcept
@@ -32,7 +35,7 @@ public Q_SLOTS:
             if (mScanner) {
                 auto scanLine = mScanner->readScanLine();
                 if (scanLine.isEmpty())
-                    return complete(SANE_STATUS_EOF);
+                    return complete(true);
 
                 Q_EMIT scanLineScanned(scanLine);
             }
@@ -42,7 +45,7 @@ public Q_SLOTS:
 Q_SIGNALS:
     void scanStarted(QImage image);
     void scanLineScanned(QByteArray scanLine);
-    void scanComplete(int status);
+    void scanComplete(bool succeeded);
 
 private:
     template<typename F>
@@ -51,17 +54,18 @@ private:
         try {
             function();
         }
-        catch (const SaneException &ex) {
-            complete(ex.status());
+        catch (const std::exception &ex) {
+            qStderr() << "unhandled exception in WorkerThread: " << ex.what() << '\n';
+            complete(false);
         }
     }
 
-    void complete(SANE_Status status) noexcept
+    void complete(bool succeeded) noexcept
     {
         if (mScanner) {
             mScanner->cancel();
             mScanner = nullptr;
-            Q_EMIT scanComplete(status);
+            Q_EMIT scanComplete(succeeded);
         }
     }
 

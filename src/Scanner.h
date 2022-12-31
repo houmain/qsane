@@ -3,22 +3,9 @@
 #include <QMap>
 #include <QImage>
 #include <QVariant>
-#include <stdexcept>
 #include <sane/sane.h>
 #include <vector>
 #include <functional>
-
-class SaneException : public std::runtime_error
-{
-public:
-    SaneException(SANE_Status status, const char *message);
-
-    SANE_Status status() const { return mStatus; }
-    const char *status_msg() const;
-
-private:
-    SANE_Status mStatus;
-};
 
 struct DeviceInfo {
     QString name;
@@ -37,6 +24,7 @@ public:
     void open(const QString &deviceName);
     void close();
     bool hasOption(const QString &name) const;
+    bool hasSettableOption(const QString &name) const;
     void forEachOption(std::function<void(const SANE_Option_Descriptor&)> callback) const;
     const SANE_Option_Descriptor *getOption(const QString &name) const;
     void setOptionValue(const QString &name, const QVariant &value, bool isIndex = false);
