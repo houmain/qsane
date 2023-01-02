@@ -2,13 +2,7 @@
 #include <QApplication>
 #include <QTranslator>
 #include <QLibraryInfo>
-#include <QTextStream>
-
-QTextStream &qStderr()
-{
-    static auto stream = QTextStream(stderr);
-    return stream;
-}
+#include <QDebug>
 
 int main(int argc, char *argv[]) try
 {
@@ -50,5 +44,5 @@ int main(int argc, char *argv[]) try
 }
 catch (const std::exception &ex)
 {
-    qStderr() << "unhandled exception: " << ex.what() << '\n';
+    qCritical() << "unhandled exception: " << ex.what() << '\n';
 }

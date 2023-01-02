@@ -40,8 +40,10 @@
         <translation>Nummer</translation>
     </message>
     <message>
-        <source>A file named "%1" already exists.\nDo you want to replace it?</source>
-        <translation>Eine Datei mit dem Namen "%1" existiert bereits.\nSoll sie ersetzt werden?</translation>
+        <source>A file named "%1" already exists.
+Do you want to replace it?</source>
+        <translation>Eine Datei mit dem Namen "%1" existiert bereits.
+Soll sie ersetzt werden?</translation>
     </message>
     <message>
         <source>Writing image file failed</source>

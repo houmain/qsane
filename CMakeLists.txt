@@ -47,6 +47,7 @@ set(SOURCES
   libs/qtpropertybrowser/src/qtpropertymanager.cpp
   libs/qtpropertybrowser/src/qttreepropertybrowser.cpp
   libs/qtpropertybrowser/src/qtvariantproperty.cpp
+  libs/qtsanescanner/src/qtsanescanner.cpp
   src/main.cpp
   src/GraphicsImageItem.cpp
   src/Scanner.cpp

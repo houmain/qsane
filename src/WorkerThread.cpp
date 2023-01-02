@@ -1,8 +1,5 @@
 #include "WorkerThread.h"
 #include "Scanner.h"
-#include <QTextStream>
-
-QTextStream &qStderr();
 
 class Worker final : public QObject
 {
@@ -17,11 +14,13 @@ public Q_SLOTS:
 
     void scan(Scanner *scanner, bool preview) noexcept
     {
-        catchException([&]() {
-            Q_EMIT scanStarted(scanner->start(preview));
-            mScanner = scanner;
-            scanNextScanLine();
-        });
+        mScanner = scanner;
+        auto image = mScanner->startScan(preview);
+        if (image.isNull())
+            return complete(false);
+
+        Q_EMIT scanStarted(image);
+        scanNextScanLine();
     }
 
     void cancelScan() noexcept
@@ -31,15 +30,13 @@ public Q_SLOTS:
 
     void scanNextScanLine() noexcept
     {
-        catchException([&]() {
-            if (mScanner) {
-                auto scanLine = mScanner->readScanLine();
-                if (scanLine.isEmpty())
-                    return complete(true);
+        if (mScanner) {
+            auto scanLine = mScanner->readScanLine();
+            if (scanLine.isEmpty())
+                return complete(true);
 
-                Q_EMIT scanLineScanned(scanLine);
-            }
-        });
+            Q_EMIT scanLineScanned(scanLine);
+        }
     }
 
 Q_SIGNALS:
@@ -48,22 +45,10 @@ Q_SIGNALS:
     void scanComplete(bool succeeded);
 
 private:
-    template<typename F>
-    void catchException(F&& function) noexcept
-    {
-        try {
-            function();
-        }
-        catch (const std::exception &ex) {
-            qStderr() << "unhandled exception in WorkerThread: " << ex.what() << '\n';
-            complete(false);
-        }
-    }
-
     void complete(bool succeeded) noexcept
     {
         if (mScanner) {
-            mScanner->cancel();
+            mScanner->cancelScan();
             mScanner = nullptr;
             Q_EMIT scanComplete(succeeded);
         }

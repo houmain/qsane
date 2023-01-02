@@ -30,8 +30,8 @@ MainWindow::MainWindow(QWidget *parent)
     mScene->addItem(mImageItem);
     mCropRect = new CropRect();
 
-    ui->groupBoxProperties->setVisible(false);
     ui->widgetIndex->setEnabled(false);
+    ui->groupBoxProperties->setVisible(false);
 
     connect(ui->checkBoxAdvanced, &QCheckBox::toggled,
         ui->propertyBrowser, &DevicePropertyBrowser::setShowAdvanced);
@@ -43,11 +43,13 @@ MainWindow::MainWindow(QWidget *parent)
     connect(ui->checkBoxIndexed, &QCheckBox::toggled,
         ui->widgetIndex, &QWidget::setEnabled);
     connect(ui->comboFolder, &QComboBox::currentTextChanged,
-        this, &MainWindow::enableSaveButton);
+        this, &MainWindow::updateSaveButton);
     connect(ui->title, &QLineEdit::textChanged,
-        this, &MainWindow::enableSaveButton);
+        this, &MainWindow::updateSaveButton);
     connect(ui->pageView, &PageView::mousePressed,
         this, &MainWindow::handlePageViewMousePressed);
+    connect(ui->buttonPreview, &QPushButton::clicked, this, &MainWindow::preview);
+    connect(ui->buttonScan, &QPushButton::clicked, this, &MainWindow::scan);
 
     connect(ui->comboDevice, &QComboBox::currentIndexChanged,
         this, &MainWindow::handleDeviceIndexChanged);
@@ -59,7 +61,8 @@ MainWindow::MainWindow(QWidget *parent)
         this, &MainWindow::handleScanLineScanned);
 
     readSettings();
-    enableSaveButton();
+    updateScanButtons();
+    updateSaveButton();
     QTimer::singleShot(500, this, &MainWindow::refreshDevices);
 }
 
@@ -68,7 +71,7 @@ MainWindow::~MainWindow()
     delete mWorkerThread;
     delete ui;
     closeScanner();
-    shutdownSane();
+    Scanner::shutdown();
 }
 
 void MainWindow::readSettings()
@@ -81,7 +84,6 @@ void MainWindow::readSettings()
     else if (s.value("maximized").toBool())
         showMaximized();
 
-    ui->title->setText(s.value("title").toString());
     ui->indexSeparator->setText(s.value("indexSeparator", " ").toString());
     ui->checkBoxIndexed->setChecked(s.value("indexed").toBool());
     const auto folders = s.value("recentFolders", QStringList()).toStringList();
@@ -100,7 +102,6 @@ void MainWindow::writeSettings()
     s.setValue("state", saveState());
 
     s.setValue("resolution", ui->comboResolution->currentText().toInt());
-    s.setValue("title", ui->title->text());
     s.setValue("indexSeparator", ui->indexSeparator->text());
     s.setValue("indexed", ui->checkBoxIndexed->isChecked());
     auto folders = QStringList();
@@ -134,9 +135,7 @@ void MainWindow::closeEvent(QCloseEvent *event)
 
 void MainWindow::refreshDevices()
 {
-    closeScanner();
-
-    const auto devices = enumerateDevices();
+    const auto devices = Scanner::initialize();
     ui->comboDevice->clear();
     for (const auto &device : devices)
         ui->comboDevice->addItem(device.vendor + " " + device.model, device.name);
@@ -153,22 +152,37 @@ void MainWindow::openScanner(const QString &deviceName)
 {
     closeScanner();
 
-    mScanner.reset(new Scanner());
-    mScanner->open(deviceName);
+    mScanner.reset(new Scanner(deviceName));
+    if (mScanner->isOpened()) {
+        connect(mScanner.data(), &Scanner::optionValuesChanged,
+            this, &MainWindow::refreshControls);
 
-    refreshControls();
-    ui->comboResolution->setCurrentText(mSettings->value("resolution").toString());
-    enableScannerBindings();
+        refreshControls();
+        ui->comboResolution->setCurrentText(mSettings->value("resolution").toString());
+    }
+    else {
+        QMessageBox(QMessageBox::Warning, QCoreApplication::applicationName(),
+            tr("Opening scanner failed"));
+        closeScanner();
+    }
 }
 
 void MainWindow::closeScanner()
 {
-    disableScannerBindings();
-    mScanner.reset();
+    if (mScanner) {
+        disconnect(mScanner.data(), &Scanner::optionValuesChanged,
+            this, &MainWindow::refreshControls);
+        mScanner.reset();
+    }
 }
 
 void MainWindow::refreshControls()
 {
+    disconnect(ui->comboResolution, &QComboBox::currentIndexChanged,
+        this, &MainWindow::handleResolutionChanged);
+    disconnect(mCropRect, &CropRect::transforming,
+        this, &MainWindow::handleCropRectTransforming);
+
     const auto resolutions = mScanner->getUniformResolutions();
     const auto resolution = mScanner->getResolution();
     ui->comboResolution->clear();
@@ -181,43 +195,18 @@ void MainWindow::refreshControls()
     ui->pageView->setBounds(maximumBounds);
     mCropRect->setBounds(mScanner->getBounds());
     mCropRect->setMaximumBounds(maximumBounds);
-}
 
-void MainWindow::enableScannerBindings()
-{
-    auto &c = mScannerBindings;
-    if (!c.isEmpty())
-        return;
-
-    c += connect(ui->buttonPreview, &QPushButton::clicked, this, &MainWindow::preview);
-    c += connect(ui->buttonScan, &QPushButton::clicked, this, &MainWindow::scan);
-    c += connect(ui->comboResolution, &QComboBox::currentIndexChanged,
+    connect(ui->comboResolution, &QComboBox::currentIndexChanged,
         this, &MainWindow::handleResolutionChanged);
-    c += connect(mCropRect, &CropRect::transforming,
+    connect(mCropRect, &CropRect::transforming,
         this, &MainWindow::handleCropRectTransforming);
-    c += connect(ui->propertyBrowser, &DevicePropertyBrowser::valueChanged,
-        this, &MainWindow::refreshControls);
-
-    ui->propertyBrowser->setEnabled(true);
-    handleResolutionChanged(ui->comboResolution->currentIndex());
-    handleCropRectTransforming(mCropRect->bounds());
-}
-
-void MainWindow::disableScannerBindings()
-{
-    for (auto &c : qAsConst(mScannerBindings))
-        disconnect(c);
-    mScannerBindings.clear();
-    ui->propertyBrowser->setEnabled(false);
 }
 
 void MainWindow::handleResolutionChanged(int index)
 {
     const auto resolution = ui->comboResolution->itemData(index).toDouble();
-    if (resolution) {
+    if (resolution)
         mScanner->setResolution({ resolution, resolution });
-        ui->propertyBrowser->refreshProperties();
-    }
 }
 
 void MainWindow::handlePageViewMousePressed(const QPointF &position)
@@ -230,24 +219,27 @@ void MainWindow::handlePageViewMousePressed(const QPointF &position)
 void MainWindow::handleCropRectTransforming(const QRectF &bounds)
 {
     mScanner->setBounds(bounds);
-    ui->propertyBrowser->refreshProperties();
 }
 
 void MainWindow::preview()
 {
-    disableScannerBindings();
+    if (mScanningItem)
+        return;
     mImageItem->clear();
     mScanningItem = mPreviewItem;
     mWorkerThread->scan(mScanner.data(), true);
+    updateScanButtons();
 }
 
 void MainWindow::scan()
 {
-    disableScannerBindings();
+    if (mScanningItem)
+        return;
     mImageItem->clear();
     mImageItem->setPos(mScanner->getBounds().topLeft());
     mScanningItem = mImageItem;
     mWorkerThread->scan(mScanner.data(), false);
+    updateScanButtons();
 }
 
 void MainWindow::handleScanStarted(QImage image)
@@ -255,16 +247,16 @@ void MainWindow::handleScanStarted(QImage image)
     mScanningItem->setImage(image);
 }
 
-void MainWindow::handleScanComplete(bool succeeded)
-{
-    mScanningItem = nullptr;
-    enableScannerBindings();
-    enableSaveButton();
-}
-
 void MainWindow::handleScanLineScanned(QByteArray scanLine)
 {
     mScanningItem->setNextScanLine(scanLine);
+}
+
+void MainWindow::handleScanComplete(bool succeeded)
+{
+    mScanningItem = nullptr;
+    updateScanButtons();
+    updateSaveButton();
 }
 
 void MainWindow::browse()
@@ -287,7 +279,13 @@ void MainWindow::addFolder(const QString &path)
         ui->comboFolder->removeItem(10);
 }
 
-void MainWindow::enableSaveButton()
+void MainWindow::updateScanButtons()
+{
+    ui->buttonPreview->setEnabled(mScanningItem == nullptr);
+    ui->buttonScan->setEnabled(mScanningItem == nullptr);
+}
+
+void MainWindow::updateSaveButton()
 {
     ui->buttonSave->setEnabled(
         !mImageItem->image().isNull() &&
@@ -309,7 +307,7 @@ void MainWindow::save()
 
     if (QFileInfo::exists(dir.filePath(filename)))
         if (QMessageBox(QMessageBox::Warning, QCoreApplication::applicationName(),
-            tr("A file named \"{}\" already exists. Do you want to replace it?").arg(filename),
+            tr("A file named \"%1\" already exists.\nDo you want to replace it?").arg(filename),
             QMessageBox::Cancel | QMessageBox::Yes).exec() != QMessageBox::Yes)
             return;
 

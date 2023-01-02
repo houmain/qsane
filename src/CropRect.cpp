@@ -21,6 +21,9 @@ CropRect::CropRect(QGraphicsItem *parent)
 
 void CropRect::setBounds(const QRectF &bounds)
 {
+    if (isTransforming())
+        return;
+
     prepareGeometryChange();
     setPos(bounds.topLeft());
     mBoundingRect.setSize(bounds.size());
@@ -42,6 +45,7 @@ void CropRect::startResize()
     prepareGeometryChange();
     grabMouse();
     mDirY = mDirX = 2;
+    mMouseOffset = { };
     mBoundingRect.setSize({ 0.001, 0.001 });
     update();
 }
@@ -176,7 +180,7 @@ void CropRect::mouseReleaseEvent(QGraphicsSceneMouseEvent *event)
 
 bool CropRect::isTransforming() const
 {
-    return (scene()->mouseGrabberItem() == this);
+    return (scene() && scene()->mouseGrabberItem() == this);
 }
 
 QRectF CropRect::boundingRect() const

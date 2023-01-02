@@ -30,8 +30,10 @@ public Q_SLOTS:
     void togglePropertyBrowser();
 
 private Q_SLOTS:
+    void refreshControls();
     void handleDeviceIndexChanged(int index);
-    void enableSaveButton();
+    void updateScanButtons();
+    void updateSaveButton();
     void handleScanStarted(QImage image);
     void handleScanLineScanned(QByteArray scanLine);
     void handleScanComplete(bool succeeded);
@@ -49,15 +51,11 @@ private:
     void addFolder(const QString &path);
     void readSettings();
     void writeSettings();
-    void enableScannerBindings();
-    void disableScannerBindings();
-    void refreshControls();
 
     Ui::MainWindow *ui;
     QSettings *mSettings;
     WorkerThread *mWorkerThread;
     QScopedPointer<Scanner> mScanner;
-    QList<QMetaObject::Connection> mScannerBindings;
 
     QGraphicsScene *mScene{ };
     CropRect *mCropRect{ };

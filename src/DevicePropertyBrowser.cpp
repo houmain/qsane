@@ -1,32 +1,25 @@
 #include "DevicePropertyBrowser.h"
 #include "qtpropertybrowser/src/qtvariantproperty.h"
-#include "Scanner.h"
 
 namespace
 {
-    int getVariantType(const SANE_Option_Descriptor &option)
+    int getVariantType(const QtSaneScanner::Option &option)
     {
-        switch (option.type) {
-            case SANE_TYPE_BOOL:
+        if (!option.allowedValues().isEmpty())
+            return QtVariantPropertyManager::enumTypeId();
+
+        using Type = QtSaneScanner::Type;
+        switch (option.type()) {
+            case Type::Bool:
                 return QVariant::Bool;
 
-            case SANE_TYPE_INT:
-                if (option.constraint_type == SANE_CONSTRAINT_WORD_LIST)
-                    return QtVariantPropertyManager::enumTypeId();
-                if (option.size != sizeof(SANE_Int))
-                    return 0;
+            case Type::Int:
                 return QVariant::Int;
 
-            case SANE_TYPE_FIXED:
-                if (option.constraint_type == SANE_CONSTRAINT_WORD_LIST)
-                    return QtVariantPropertyManager::enumTypeId();
-                if (option.size != sizeof(SANE_Int))
-                    return 0;
+            case Type::Value:
                 return QVariant::Double;
 
-            case SANE_TYPE_STRING:
-                if (option.constraint_type == SANE_CONSTRAINT_STRING_LIST)
-                    return QtVariantPropertyManager::enumTypeId();
+            case Type::String:
                 return QVariant::String;
 
             default:
@@ -34,31 +27,18 @@ namespace
         }
     }
 
-    QString getUnitString(SANE_Unit unit)
+    QString getUnitString(QtSaneScanner::Unit unit)
     {
+        using Unit = QtSaneScanner::Unit;
         switch (unit) {
-            case SANE_UNIT_PIXEL: return QStringLiteral("px");
-            case SANE_UNIT_BIT: return QStringLiteral("bits");
-            case SANE_UNIT_MM: return QStringLiteral("mm");
-            case SANE_UNIT_DPI: return QStringLiteral("dpi");
-            case SANE_UNIT_PERCENT: return QStringLiteral("%");
-            case SANE_UNIT_MICROSECOND: return QStringLiteral("μs");
+            case Unit::Pixel: return QStringLiteral("px");
+            case Unit::Bit: return QStringLiteral("bits");
+            case Unit::Millimeter: return QStringLiteral("mm");
+            case Unit::DPI: return QStringLiteral("dpi");
+            case Unit::Percent: return QStringLiteral("%");
+            case Unit::Microsecond: return QStringLiteral("μs");
             default: return { };
         }
-    }
-
-    bool filterDeviceOption(const QString &name, const QString &desc)
-    {
-        if (desc.contains(QStringLiteral("DEPRECATED"), Qt::CaseInsensitive))
-            return false;
-
-        if (name == "preview" ||
-            name == "preview-speed" ||
-            name == "speed" ||
-            name == "short-resolution")
-            return false;
-
-        return true;
     }
 } // namespace
 
@@ -71,19 +51,31 @@ DevicePropertyBrowser::DevicePropertyBrowser(QWidget *parent)
     setIndentation(0);
 }
 
-void DevicePropertyBrowser::setScanner(Scanner *scanner)
+void DevicePropertyBrowser::setScanner(QtSaneScanner *scanner)
 {
+    if (mScanner) {
+        disconnect(mScanner, &QtSaneScanner::optionsChanged, this,
+            &DevicePropertyBrowser::handleOptionsChanged);
+        disconnect(mScanner, &QtSaneScanner::optionChanged, this,
+            &DevicePropertyBrowser::handleOptionChanged);
+
+        clear();
+        mProperties.clear();
+    }
+
     mScanner = scanner;
 
-    clear();
-    mProperties.clear();
+    if (mScanner) {
+        for (const auto &option : mScanner->options())
+            createProperty(option);
 
-    if (mScanner)
-        mScanner->forEachOption([&](const SANE_Option_Descriptor &option) {
-            addOption(option);
-        });
+        connect(mScanner, &QtSaneScanner::optionsChanged, this,
+            &DevicePropertyBrowser::handleOptionsChanged);
+        connect(mScanner, &QtSaneScanner::optionChanged, this,
+            &DevicePropertyBrowser::handleOptionChanged);
 
-    refreshProperties();
+        refreshProperties();
+    }
 }
 
 void DevicePropertyBrowser::setShowAdvanced(bool showAdvanced)
@@ -94,56 +86,53 @@ void DevicePropertyBrowser::setShowAdvanced(bool showAdvanced)
     }
 }
 
-void DevicePropertyBrowser::addOption(const SANE_Option_Descriptor &option)
+void DevicePropertyBrowser::createProperty(const QtSaneScanner::Option &option)
 {
     const auto variantType = getVariantType(option);
     if (!variantType)
         return;
 
-    const auto name = QString(option.name);
-    auto desc = QString(option.desc);
-    if (!filterDeviceOption(name, desc))
-        return;
-
-    auto title = QString(option.title);
-    if (option.unit)
-        title += " [" + getUnitString(option.unit) + "]";
+    auto description = option.description();
+    auto title = QString(option.title());
+    if (option.unit() != QtSaneScanner::Unit::None)
+        title += " [" + getUnitString(option.unit()) + "]";
 #if !defined(NDEBUG)
-    desc += " [" + name + "]";
+    description += " [" + option.name() + "]";
 #endif
 
     auto property = mPropertyManager->addProperty(variantType, title);
-    property->setWhatsThis(name);
-    property->setToolTip(desc);
-    mProperties.append(property);
+    property->setWhatsThis(option.name());
+    property->setToolTip(description);
+    mProperties[option.name()] = property;
 }
 
-void DevicePropertyBrowser::refreshProperty(QtVariantProperty &property,
-    const SANE_Option_Descriptor &option)
+void DevicePropertyBrowser::refreshProperty(QtProperty &property_,
+    const QtSaneScanner::Option &option)
 {
-    if (option.constraint_type == SANE_CONSTRAINT_STRING_LIST) {
+    auto &property = static_cast<QtVariantProperty&>(property_);
+    const auto &range = option.allowedRange();
+    if (!option.allowedValues().isEmpty()) {
         auto enumNames = QStringList();
-        forEachStringInList(option, [&](auto string) { enumNames << string; });
+        for (const auto &value : option.allowedValues())
+            enumNames << value.toString();
         property.setAttribute(QLatin1String("enumNames"), enumNames);
     }
-    else if (option.constraint_type == SANE_CONSTRAINT_WORD_LIST) {
-        auto enumNames = QStringList();
-        forEachWordInList(option, [&](auto word) { enumNames << QString::number(word); });
-        property.setAttribute(QLatin1String("enumNames"), enumNames);
-    }
-    else if (option.constraint_type == SANE_CONSTRAINT_RANGE) {
-        property.setAttribute(QLatin1String("minimum"), option.constraint.range->min);
-        property.setAttribute(QLatin1String("maximum"), option.constraint.range->max);
-        if (option.constraint.range->quant)
-            property.setAttribute(QLatin1String("singleStep"), option.constraint.range->quant);
+    else if (range.min != range.max) {
+        property.setAttribute(QLatin1String("minimum"), range.min);
+        property.setAttribute(QLatin1String("maximum"), range.max);
+        if (range.quantization != 0)
+            property.setAttribute(QLatin1String("singleStep"), range.quantization);
     }
 
-    if (option.type == SANE_TYPE_FIXED) {
+    if (option.type() == QtSaneScanner::Type::Value) {
         property.setAttribute(QLatin1String("singleStep"), 0.001);
         property.setAttribute(QLatin1String("decimals"), 4);
     }
-    property.setEnabled(option.cap & SANE_CAP_SOFT_SELECT);
-    property.setValue(mScanner->getOptionValue(option.name, true));
+
+    property.setEnabled(option.isSettable());
+    property.setValue(
+        option.allowedValues().isEmpty() ? option.value() :
+        option.allowedValues().indexOf(option.value()));
 }
 
 void DevicePropertyBrowser::refreshProperties()
@@ -153,12 +142,10 @@ void DevicePropertyBrowser::refreshProperties()
 
     auto activeProperties = QList<QtProperty *>();
     for (auto property : qAsConst(mProperties))
-        if (auto option = mScanner->getOption(property->whatsThis())) {
-            const auto advanced = (option->cap & SANE_CAP_ADVANCED) != 0;
-            const auto inactive = (option->cap & SANE_CAP_INACTIVE) != 0;
-            if (!inactive && (!advanced || mShowAdvanced)) {
+        if (auto option = mScanner->findOption(property->whatsThis())) {
+            if (option->isActive() && (option->isAdvanced() || mShowAdvanced)) {
+                refreshProperty(*property, *option);
                 activeProperties.append(property);
-                refreshProperty(static_cast<QtVariantProperty&>(*property), *option);
             }
         }
 
@@ -172,10 +159,20 @@ void DevicePropertyBrowser::refreshProperties()
         this, &DevicePropertyBrowser::handleValueChanged);
 }
 
+void DevicePropertyBrowser::handleOptionsChanged()
+{
+    refreshProperties();
+}
+
+void DevicePropertyBrowser::handleOptionChanged(const QtSaneScanner::Option &option)
+{
+    refreshProperty(*mProperties[option.name()], option);
+}
+
 void DevicePropertyBrowser::handleValueChanged(QtProperty *property, const QVariant &value)
 {
-    mScanner->setOptionValue(property->whatsThis(), value, true);
-    refreshProperties();
-
-    Q_EMIT valueChanged(property, value);
+    if (auto option = mScanner->findOption(property->whatsThis()))
+        option->setValue(
+            option->allowedValues().isEmpty() ? value :
+            option->allowedValues().at(value.toInt()));
 }

@@ -1,12 +1,11 @@
 #pragma once
 
-#include <sane/sane.h>
+#include "qtsanescanner/src/qtsanescanner.h"
 #include "qtpropertybrowser/src/qttreepropertybrowser.h"
 
 class QtVariantPropertyManager;
 class QtVariantProperty;
 class QtProperty;
-class Scanner;
 
 class DevicePropertyBrowser : public QtTreePropertyBrowser
 {
@@ -14,25 +13,23 @@ class DevicePropertyBrowser : public QtTreePropertyBrowser
 public:
     explicit DevicePropertyBrowser(QWidget *parent = nullptr);
 
-    void setScanner(Scanner *scanner);
+    void setScanner(QtSaneScanner *scanner);
     void setShowAdvanced(bool showAdvanced);
-    void refreshProperties();
-
-Q_SIGNALS:
-    void valueChanged(QtProperty *property,
-        const QVariant &value);
 
 private Q_SLOTS:
     void handleValueChanged(QtProperty *property,
         const QVariant &value);
+    void handleOptionsChanged();
+    void handleOptionChanged(const QtSaneScanner::Option &option);
 
 private:
-    void addOption(const SANE_Option_Descriptor &option);
-    void refreshProperty(QtVariantProperty &property,
-        const SANE_Option_Descriptor &option);
+    void createProperty(const QtSaneScanner::Option &option);
+    void refreshProperties();
+    void refreshProperty(QtProperty &property,
+        const QtSaneScanner::Option &option);
 
     QtVariantPropertyManager* mPropertyManager;
-    QList<QtProperty *> mProperties;
-    Scanner *mScanner{ };
+    QMap<QString, QtProperty *> mProperties;
+    QtSaneScanner *mScanner{ };
     bool mShowAdvanced{ };
 };

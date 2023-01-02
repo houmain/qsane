@@ -1,12 +1,5 @@
-
 #include "Scanner.h"
-#include <limits>
-#include <cstring>
-#include <cmath>
 #include <QSet>
-#include <QTextStream>
-
-QTextStream& qStderr();
 
 namespace
 {
@@ -22,392 +15,127 @@ namespace
         const auto bottom_right_y = QStringLiteral("br-y");
     }
 
-    int g_sane_version_code = 0;
-
-    int initializeSane()
+    QPair<double, double> getMinMax(const QtSaneScanner::Option &option)
     {
-        if (!g_sane_version_code)
-            sane_init(&g_sane_version_code, nullptr);
-        return g_sane_version_code;
+        if (!option.allowedValues().isEmpty())
+            return {
+                option.allowedValues().first().toDouble(),
+                option.allowedValues().last().toDouble()
+            };
+
+        return { option.allowedRange().min, option.allowedRange().max };
     }
 
-    void error(SANE_Status status, const char *action)
+    QSet<double> toValueSet(const QList<QVariant> &values)
     {
-        qStderr() << action << " failed: " << sane_strstatus(status) << '\n';
-        qStderr().flush();
+        auto set = QSet<double>();
+        for (const auto &value : values)
+            set << value.toDouble();
+        return set;
     }
 
-    void check(SANE_Status status, const char *action)
+    QList<double> intersectLists(const QList<QVariant> &a, const QList<QVariant> &b)
     {
-        if (status != SANE_STATUS_GOOD)
-            error(status, action);
-    }
-
-    QPair<double, double> getMinMax(const SANE_Option_Descriptor *option)
-    {
-        const auto toPair = [&](SANE_Word min, SANE_Word max) -> QPair<double, double> {
-            if (option->type == SANE_TYPE_FIXED)
-                return { SANE_UNFIX(min), SANE_UNFIX(max) };
-            return { static_cast<double>(min), static_cast<double>(max) };
-        };
-        if (option && option->constraint_type == SANE_CONSTRAINT_RANGE) {
-            return toPair(option->constraint.range->min, option->constraint.range->max);
-        }
-        else if (option && option->constraint_type == SANE_CONSTRAINT_WORD_LIST) {
-            const auto wordList = option->constraint.word_list;
-            auto min = std::numeric_limits<SANE_Word>::max();
-            auto max = std::numeric_limits<SANE_Word>::min();
-            for (auto i = 1; i <= wordList[0]; ++i) {
-                if (wordList[i] < min) min = wordList[i];
-                if (wordList[i] > max) max = wordList[i];
-            }
-            return toPair(min, max);
-        }
-        error(SANE_STATUS_INVAL, "reading area bounds");
-        return { };
-    }
-
-    template<typename F>
-    void forEachValueInList(const SANE_Option_Descriptor &option, F&& function)
-    {
-        if (option.constraint_type == SANE_CONSTRAINT_WORD_LIST) {
-            forEachWordInList(option, [&](auto word) {
-                function(option.type == SANE_TYPE_FIXED ?
-                    SANE_UNFIX(word) : static_cast<double>(word));
-            });
-        }
-    }
-
-    SANE_Word getNthWord(const SANE_Option_Descriptor &option, int index)
-    {
-        const auto list = option.constraint.word_list;
-        const auto count = list[0];
-        return list[std::clamp(index + 1, 1, count)];
-    }
-
-    QString getNthString(const SANE_Option_Descriptor &option, int index)
-    {
-        const auto list = option.constraint.string_list;
-        for (auto it = list; *it; ++it, --index)
-            if (index <= 0)
-                return *it;
-        return { };
-    }
-
-    int indexOfWord(const SANE_Option_Descriptor &option, SANE_Word word)
-    {
-        const auto list = option.constraint.word_list;
-        const auto count = list[0];
-        for (auto i = 1; i <= count; ++i)
-            if (list[i] == word)
-                return i - 1;
-        return 0;
-    }
-
-    int indexOfString(const SANE_Option_Descriptor &option, const QString &string)
-    {
-        const auto list = option.constraint.string_list;
-        auto i = 0;
-        for (auto it = list; *it; ++it, ++i)
-            if (*it == string)
-                return i;
-        return 0;
+        const auto intersected = toValueSet(a).intersect(toValueSet(b));
+        auto list = QList<double>(intersected.begin(), intersected.end());
+        std::sort(list.begin(), list.end());
+        return list;
     }
 } // namespace
 
-void shutdownSane()
+Scanner::Scanner(const QString &deviceName)
+    : QtSaneScanner(deviceName)
 {
-    if (g_sane_version_code) {
-        sane_exit();
-        g_sane_version_code = 0;
+    connect(this, &QtSaneScanner::optionsChanged,
+        this, &Scanner::optionValuesChanged);
+    connect(this, &QtSaneScanner::optionChanged,
+        this, &Scanner::optionValuesChanged);
+}
+
+QImage Scanner::startScan(bool preview)
+{
+    disconnect(this, &QtSaneScanner::optionsChanged,
+        this, &Scanner::optionValuesChanged);
+    disconnect(this, &QtSaneScanner::optionChanged,
+        this, &Scanner::optionValuesChanged);
+
+    const auto savedResolution = getResolution();
+    const auto savedBounds = getBounds();
+    if (preview) {
+        setOptionValue(WellKnownOption::preview, preview);
+        const auto resolutions = getUniformResolutions();
+        if (!resolutions.isEmpty())
+            setResolution(resolutions.first());
+        setBounds(getMaximumBounds());
     }
-}
-
-QList<DeviceInfo> enumerateDevices()
-{
-    shutdownSane();
-
-    if (!initializeSane())
-        return { };
-
-    auto device_list = std::add_pointer_t<std::add_pointer_t<SANE_Device>>{ };
-    check(sane_get_devices(const_cast<const SANE_Device***>(&device_list), true),
-          "enumerating devices");
-
-    auto devices = QList<DeviceInfo>();
-    for (auto i = 0; device_list[i]; ++i) {
-        auto &device = *device_list[i];
-        if (device.type == QStringLiteral("virtual device"))
-            continue;
-        devices += DeviceInfo{
-            device.name,
-            device.vendor,
-            device.model,
-            device.type,
-        };
-    }
-    return devices;
-}
-
-Scanner::~Scanner()
-{
-    close();
-}
-
-void Scanner::open(const QString &deviceName)
-{
-    check(sane_open(qUtf8Printable(deviceName), &mDeviceHandle),
-        "opening device");
-
-    mOptions.clear();
-    for (auto i = 1; auto option = sane_get_option_descriptor(mDeviceHandle, i); ++i)
-        mOptions.insert(option->name, { i, option });
-
-    if (hasOption(QStringLiteral("short-resolution")))
-        setOptionValue("short-resolution", false);
-}
-
-void Scanner::close() {
-    if (mDeviceHandle)
-        sane_close(mDeviceHandle);
-    mDeviceHandle = nullptr;
-}
-
-void Scanner::controlSet(const Option &option, const void *value, SANE_Int size)
-{
-    check(sane_control_option(mDeviceHandle, option.index,
-        SANE_ACTION_SET_VALUE, const_cast<void*>(value), nullptr),
-        "setting option");
-}
-
-void Scanner::controlGet(const Option &option, void *value, SANE_Int size) const
-{
-    Q_ASSERT(size == option.desc->size);
-    if (size == option.desc->size)
-        check(sane_control_option(mDeviceHandle, option.index,
-            SANE_ACTION_GET_VALUE, value, nullptr),
-            "getting option");
-}
-
-bool Scanner::hasOption(const QString &name) const
-{
-    const auto option = mOptions[name];
-    return option.desc &&
-        SANE_OPTION_IS_ACTIVE(option.desc->cap);
-}
-
-bool Scanner::hasSettableOption(const QString &name) const
-{
-    const auto option = mOptions[name];
-    return option.desc &&
-        SANE_OPTION_IS_SETTABLE(option.desc->cap) &&
-        SANE_OPTION_IS_ACTIVE(option.desc->cap);
-}
-
-void Scanner::forEachOption(
-        std::function<void(const SANE_Option_Descriptor&)> callback) const
-{
-    for (const auto option : mOptions)
-        if (auto desc = option.desc)
-            callback(*desc);
-}
-
-const SANE_Option_Descriptor *Scanner::getOption(const QString &name) const
-{
-    return mOptions[name].desc;
-}
-
-void Scanner::setOptionValue(const QString &name, const QVariant &value, bool isIndex)
-{
-    const auto &option = mOptions[name];
-    if (auto desc = option.desc) {
-        switch (desc->type) {
-            case SANE_TYPE_BOOL:
-                controlSet(option, SANE_Bool{ value.toBool() });
-                break;
-
-            case SANE_TYPE_INT:
-                if (isIndex && desc->constraint_type == SANE_CONSTRAINT_WORD_LIST)
-                    controlSet(option, SANE_Int{ getNthWord(*desc, value.toInt()) });
-                else
-                    controlSet(option, SANE_Int{ value.toInt() });
-                break;
-
-            case SANE_TYPE_FIXED:
-                if (isIndex && desc->constraint_type == SANE_CONSTRAINT_WORD_LIST)
-                    controlSet(option, SANE_Fixed{ getNthWord(*desc, value.toInt()) });
-                else
-                    controlSet(option, SANE_Fixed{ SANE_FIX(value.toDouble()) });
-                break;
-
-            case SANE_TYPE_STRING: {
-                auto buffer = QByteArray();
-                if (isIndex && desc->constraint_type == SANE_CONSTRAINT_STRING_LIST)
-                    buffer = getNthString(*desc, value.toInt()).toUtf8();
-                else
-                    buffer = value.toString().toUtf8();
-                controlSet(option, buffer.data(), buffer.size());
-                break;
-            }
-        }
-    }
-}
-
-QVariant Scanner::getOptionValue(const QString &name, bool getIndex) const
-{
-    const auto &option = mOptions[name];
-    if (auto desc = option.desc) {
-        switch (desc->type) {
-            case SANE_TYPE_BOOL:
-                return static_cast<bool>(controlGet<SANE_Bool>(option));
-
-            case SANE_TYPE_INT: {
-                const auto value = controlGet<SANE_Int>(option);
-                if (getIndex && desc->constraint_type == SANE_CONSTRAINT_WORD_LIST)
-                    return indexOfWord(*desc, value);
-                return value;
-            }
-
-            case SANE_TYPE_FIXED: {
-                const auto value = controlGet<SANE_Fixed>(option);
-                if (getIndex && desc->constraint_type == SANE_CONSTRAINT_WORD_LIST)
-                    return indexOfWord(*desc, value);
-                return SANE_UNFIX(value);
-            }
-
-            case SANE_TYPE_STRING: {
-                auto buffer = QByteArray(desc->size, Qt::Uninitialized);
-                controlGet(option, buffer.data(), desc->size);
-                auto string = QString(buffer);
-                if (getIndex && desc->constraint_type == SANE_CONSTRAINT_STRING_LIST)
-                    return indexOfString(*desc, string);
-                return string;
-            }
-        }
-    }
-    return { };
-}
-
-QImage Scanner::start(bool preview)
-{
-    setPreviewMode(preview);
-
-    check(sane_start(mDeviceHandle), "starting scan");
-    check(sane_get_parameters(mDeviceHandle, &mParameters), "getting scan parameters");
-
-    auto format = QImage::Format{ };
-    format = QImage::Format_RGB888;
-
-    const auto size = QSize(mParameters.pixels_per_line, mParameters.lines);
-    auto image = QImage(size, format);
 
     const auto dpi = getResolution();
     const auto dpiToDpm = 39.37;
+    auto image = QtSaneScanner::startScan();
     image.setDotsPerMeterX(static_cast<int>(dpi.x() * dpiToDpm));
     image.setDotsPerMeterY(static_cast<int>(dpi.y() * dpiToDpm));
 
+    if (preview) {
+        setOptionValue(WellKnownOption::preview, false);
+        setResolution(savedResolution);
+        setBounds(savedBounds);
+    }
     return image;
 }
 
-QByteArray Scanner::readScanLine()
+void Scanner::cancelScan()
 {
-    auto length = SANE_Int{ };
-    auto rowData = QByteArray(mParameters.bytes_per_line, Qt::Uninitialized);
-    const auto result = sane_read(mDeviceHandle,
-        reinterpret_cast<SANE_Byte*>(rowData.data()), rowData.size(), &length);
+    connect(this, &QtSaneScanner::optionsChanged,
+        this, &Scanner::optionValuesChanged);
+    connect(this, &QtSaneScanner::optionChanged,
+        this, &Scanner::optionValuesChanged);
 
-    if (result == SANE_STATUS_EOF || result == SANE_STATUS_CANCELLED)
-        return { };
-
-    check(result, "reading line");
-    return rowData;
+    QtSaneScanner::cancelScan();
 }
 
-void Scanner::cancel()
+void Scanner::setResolution(const QPointF &res)
 {
-    sane_cancel(mDeviceHandle);
-    restoreScanMode();
-}
-
-void Scanner::setPreviewMode(bool preview)
-{
-    setOptionValue(WellKnownOption::preview, preview);
-    mSavedResolution = getResolution();
-    mSavedBounds = getBounds();
-    if (preview) {
-        const auto resolutions = getUniformResolutions();
-        setResolution(resolutions.first());
-        setBounds(getMaximumBounds());
-    }
-}
-
-void Scanner::restoreScanMode()
-{
-    setOptionValue(WellKnownOption::preview, false);
-    setResolution(mSavedResolution);
-    setBounds(mSavedBounds);
-}
-
-void Scanner::setResolution(const QPointF &resolution)
-{
-    if (hasSettableOption(WellKnownOption::resolution))
-        setOptionValue(WellKnownOption::resolution,
-            std::min(resolution.x(), resolution.y()));
-    if (hasSettableOption(WellKnownOption::x_resolution))
-        setOptionValue(WellKnownOption::x_resolution, resolution.x());
-    if (hasSettableOption(WellKnownOption::y_resolution))
-        setOptionValue(WellKnownOption::y_resolution, resolution.y());
+    setOptionValue(WellKnownOption::resolution, std::min(res.x(), res.y()));
+    if (auto x_resolution = findOption(WellKnownOption::x_resolution))
+        x_resolution->setValue(res.x());
+    if (auto y_resolution = findOption(WellKnownOption::y_resolution))
+        y_resolution->setValue(res.y());
 }
 
 QPointF Scanner::getResolution() const
 {
-    auto resolution = 0.0;
-    if (hasOption(WellKnownOption::resolution))
-        resolution = getOptionValue(WellKnownOption::resolution).toDouble();
-    auto xResolution = resolution;
-    auto yResolution = xResolution;
-    if (hasOption(WellKnownOption::x_resolution))
-        xResolution = getOptionValue(WellKnownOption::x_resolution).toDouble();
-    if (hasOption(WellKnownOption::y_resolution))
-        yResolution = getOptionValue(WellKnownOption::y_resolution).toDouble();
-    return { xResolution, yResolution };
+    auto x_res = getOptionValue(WellKnownOption::resolution).toDouble();
+    auto y_res = x_res;
+    if (auto x_resolution = findOption(WellKnownOption::x_resolution))
+        x_res = x_resolution->value().toDouble();
+    if (auto y_resolution = findOption(WellKnownOption::y_resolution))
+        y_res = y_resolution->value().toDouble();
+    return { x_res, y_res };
 }
 
 QList<double> Scanner::getUniformResolutions() const
 {
-    const auto &resolution = *getOption(WellKnownOption::resolution);
-    if (resolution.constraint_type == SANE_CONSTRAINT_RANGE) {
-        // TODO: improve list
-        const auto &range = *resolution.constraint.range;
-        const auto step = (range.max - range.min) / 10;
-        auto resolutions = QList<double>();
-        for (auto i = range.min; i < range.max; i += step)
-            resolutions.append(i);
-        resolutions.append(range.max);
-        return resolutions;
+    auto list = QList<double>();
+    const auto x_res = findOption(WellKnownOption::x_resolution);
+    const auto y_res = findOption(WellKnownOption::y_resolution);
+    if (x_res && y_res && !x_res->allowedValues().isEmpty()) {
+        list = intersectLists(x_res->allowedValues(), y_res->allowedValues());
     }
-    else if (resolution.constraint_type == SANE_CONSTRAINT_WORD_LIST) {
-        const auto getValues = [](const auto &desc) {
-            auto values = QSet<double>();
-            forEachValueInList(desc, [&](auto value) { values.insert(value); });
-            return values;
-        };
-        auto resolutions = getValues(resolution);
-        auto xResolutions = resolutions;
-        auto yResolutions = resolutions;
-        if (hasOption(WellKnownOption::x_resolution))
-            xResolutions = getValues(*getOption(WellKnownOption::x_resolution));
-        if (hasOption(WellKnownOption::y_resolution))
-            yResolutions = getValues(*getOption(WellKnownOption::y_resolution));
-        resolutions = xResolutions.intersect(yResolutions);
-        if (resolutions.empty())
-            resolutions.insert(*xResolutions.begin());
-
-        auto list = QList<double>(resolutions.begin(), resolutions.end());
-        std::sort(list.begin(), list.end());
-        return list;
+    else if (auto res = findOption(WellKnownOption::resolution)) {
+        if (!res->allowedValues().isEmpty()) {
+            for (const auto &value : res->allowedValues())
+                list << value.toDouble();
+        }
+        else {
+            // TODO: improve list
+            auto range = res->allowedRange();
+            const auto step = (range.max - range.min) / 10;
+            for (auto value = range.min; value < range.max; value += step)
+                list << value;
+            list << range.max;
+        }
     }
-    return { };
+    return list;
 }
 
 void Scanner::setBounds(const QRectF &bounds)
@@ -431,12 +159,17 @@ QRectF Scanner::getBounds() const
 
 QRectF Scanner::getMaximumBounds() const
 {
-    const auto minMaxX = getMinMax(getOption(WellKnownOption::bottom_right_x));
-    const auto minMaxY = getMinMax(getOption(WellKnownOption::bottom_right_y));
-    const auto rect = QRectF(minMaxX.first, minMaxY.first,
-                            minMaxX.second, minMaxY.second);
+    const auto br_x = findOption(WellKnownOption::bottom_right_x);
+    const auto br_y = findOption(WellKnownOption::bottom_right_y);
+    if (!br_x || !br_y)
+        return { };
 
-    if (getOption(WellKnownOption::bottom_right_x)->unit == SANE_UNIT_PIXEL) {
+    const auto minMaxX = getMinMax(*br_x);
+    const auto minMaxY = getMinMax(*br_y);
+    const auto rect = QRectF(minMaxX.first, minMaxY.first,
+                             minMaxX.second, minMaxY.second);
+
+    if (br_x->unit() == Unit::Pixel) {
         const auto dpi = getResolution();
         const auto pixelsToMM = QPointF(25.4 / dpi.x(), 25.4 / dpi.y());
         return QRectF{
