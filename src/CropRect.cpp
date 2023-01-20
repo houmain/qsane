@@ -25,14 +25,14 @@ void CropRect::setBounds(const QRectF &bounds)
         return;
 
     prepareGeometryChange();
-    setPos(bounds.topLeft());
-    mBoundingRect.setSize(bounds.size());
+    mBounds = bounds;
     update();
 }
 
-QRectF CropRect::bounds() const
+QRectF CropRect::boundingRect() const
 {
-    return { pos() + mBoundingRect.topLeft(), mBoundingRect.size() };
+    const auto h = handleSize();
+    return mBounds.adjusted(-h, -h, h, h);
 }
 
 void CropRect::setMaximumBounds(const QRectF &bounds)
@@ -40,14 +40,12 @@ void CropRect::setMaximumBounds(const QRectF &bounds)
     mMaximumBounds = bounds;
 }
 
-void CropRect::startResize()
+void CropRect::startRect(const QPointF &position)
 {
     prepareGeometryChange();
     grabMouse();
-    mDirY = mDirX = 2;
-    mMouseOffset = { };
-    mBoundingRect.setSize({ 0.001, 0.001 });
-    update();
+    mDirY = mDirX = 5; // start on mouseMoveEvent
+    mMouseOffset = position;
 }
 
 void CropRect::hoverMoveEvent(QGraphicsSceneHoverEvent *event)
@@ -56,15 +54,13 @@ void CropRect::hoverMoveEvent(QGraphicsSceneHoverEvent *event)
 
     const auto x = event->pos().x();
     const auto y = event->pos().y();
-    const auto rect = boundingRect();
-    const auto handleSizeX = 0.1 * rect.width();
-    const auto handleSizeY = 0.1 * rect.height();
-    auto handles = rect;
-    handles.adjust(handleSizeX, handleSizeY, -handleSizeX, -handleSizeY);
+    const auto rect = bounds();
+    const auto h = handleSize();
+    const auto handles = rect.adjusted(h, h, -h, -h);
 
     mDirX = 1;
     mDirY = 1;
-    mMouseOffset = { -x, -y };
+    mMouseOffset = { rect.left() - x, rect.top() -y };
     if (x > handles.right()) {
         mDirX = 2;
         mMouseOffset.setX(rect.right() - x);
@@ -109,21 +105,27 @@ void CropRect::mouseMoveEvent(QGraphicsSceneMouseEvent *event)
 {
     QGraphicsObject::mouseMoveEvent(event);
 
+    auto rect = bounds();
+
+    if (mDirX == 5) {
+        // startRect
+        mDirY = mDirX = 2;
+        rect = QRectF(mMouseOffset, QSizeF(0, 0));
+        mMouseOffset = { };
+    }
+
     const auto mousePos = event->pos() + mMouseOffset;
-    auto rect = mBoundingRect;
     switch (mDirY * 3 + mDirX) {
         case 0: rect.setTopLeft(mousePos); break;
         case 1: rect.setTop(mousePos.y()); break;
         case 2: rect.setTopRight(mousePos); break;
         case 3: rect.setLeft(mousePos.x()); break;
-        case 4: rect.translate(mousePos - rect.topLeft()); break;
+        case 4: rect.moveTopLeft(mousePos); break;
         case 5: rect.setRight(mousePos.x()); break;
         case 6: rect.setBottomLeft(mousePos); break;
         case 7: rect.setBottom(mousePos.y()); break;
         case 8: rect.setBottomRight(mousePos); break;
     }
-    if (!rect.width() || !rect.height())
-        return;
 
     if (rect.left() > rect.right()) {
         const auto l = rect.left();
@@ -142,26 +144,30 @@ void CropRect::mouseMoveEvent(QGraphicsSceneMouseEvent *event)
         mMouseOffset.setY(0);
     }
 
-    auto maximumBounds = mMaximumBounds;
-    maximumBounds.moveTopLeft(-pos());
-
+    const auto max = mMaximumBounds;
     if (mDirX == 1) {
-        if (rect.left() < maximumBounds.left())
-            rect.moveLeft(maximumBounds.left());
-        else if (rect.right() > maximumBounds.right())
-            rect.moveRight(maximumBounds.right());
+        if (rect.left() < max.left())
+            rect.moveLeft(max.left());
+        else if (rect.right() > max.right())
+            rect.moveRight(max.right());
     }
     if (mDirY == 1) {
-        if (rect.top() < maximumBounds.top())
-            rect.moveTop(maximumBounds.top());
-        else if (rect.bottom() > maximumBounds.bottom())
-            rect.moveBottom(maximumBounds.bottom());
+        if (rect.top() < max.top())
+            rect.moveTop(max.top());
+        else if (rect.bottom() > max.bottom())
+            rect.moveBottom(max.bottom());
     }
-
-    rect = rect.intersected(maximumBounds);
+    if (rect.left() < max.left())     rect.setLeft(max.left());
+    if (rect.left() > max.right())    rect.setLeft(max.right());
+    if (rect.right() < max.left())    rect.setRight(max.left());
+    if (rect.right() > max.right())   rect.setRight(max.right());
+    if (rect.top() < max.top())       rect.setTop(max.top());
+    if (rect.top() > max.bottom())    rect.setTop(max.bottom());
+    if (rect.bottom() < max.top())    rect.setBottom(max.top());
+    if (rect.bottom() > max.bottom()) rect.setBottom(max.bottom());
 
     prepareGeometryChange();
-    mBoundingRect = rect;
+    mBounds = rect;
     update();
 
     Q_EMIT transforming(bounds());
@@ -171,21 +177,12 @@ void CropRect::mouseReleaseEvent(QGraphicsSceneMouseEvent *event)
 {
     ungrabMouse();
     QGraphicsObject::mouseReleaseEvent(event);
-
-    moveBy(mBoundingRect.left(), mBoundingRect.top());
-    mBoundingRect.moveTo(0, 0);
-
     Q_EMIT transformed(bounds());
 }
 
 bool CropRect::isTransforming() const
 {
     return (scene() && scene()->mouseGrabberItem() == this);
-}
-
-QRectF CropRect::boundingRect() const
-{
-    return mBoundingRect;
 }
 
 void CropRect::paint(QPainter *painter,
@@ -197,12 +194,12 @@ void CropRect::paint(QPainter *painter,
 
     pen.setColor(QColor(Qt::white));
     painter->setPen(pen);
-    painter->drawRect(boundingRect());
+    painter->drawRect(mBounds);
 
     auto dashes = QVector<qreal>();
     dashes << 4 << 4;
     pen.setDashPattern(dashes);
     pen.setColor(QColor(Qt::black));
     painter->setPen(pen);
-    painter->drawRect(boundingRect());
+    painter->drawRect(mBounds);
 }

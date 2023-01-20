@@ -48,6 +48,8 @@ MainWindow::MainWindow(QWidget *parent)
         this, &MainWindow::updateSaveButton);
     connect(ui->pageView, &PageView::mousePressed,
         this, &MainWindow::handlePageViewMousePressed);
+    connect(ui->pageView, &PageView::zoomChanged,
+        [this](qreal scale) { mCropRect->setHandleSize(4.0 / scale); });
     connect(ui->buttonPreview, &QPushButton::clicked, this, &MainWindow::preview);
     connect(ui->buttonScan, &QPushButton::clicked, this, &MainWindow::scan);
 
@@ -139,6 +141,7 @@ void MainWindow::refreshDevices()
     ui->comboDevice->clear();
     for (const auto &device : devices)
         ui->comboDevice->addItem(device.vendor + " " + device.model, device.name);
+    updateScanButtons();
 }
 
 void MainWindow::handleDeviceIndexChanged(int index)
@@ -193,7 +196,6 @@ void MainWindow::refreshControls()
 
     const auto maximumBounds = mScanner->getMaximumBounds();
     ui->pageView->setBounds(maximumBounds);
-    mCropRect->setBounds(mScanner->getBounds());
     mCropRect->setMaximumBounds(maximumBounds);
 
     connect(ui->comboResolution, &QComboBox::currentIndexChanged,
@@ -212,8 +214,7 @@ void MainWindow::handleResolutionChanged(int index)
 void MainWindow::handlePageViewMousePressed(const QPointF &position)
 {
     mScene->addItem(mCropRect);
-    mCropRect->setPos(position);
-    mCropRect->startResize();
+    mCropRect->startRect(position);
 }
 
 void MainWindow::handleCropRectTransforming(const QRectF &bounds)
@@ -273,6 +274,9 @@ void MainWindow::addFolder(const QString &path)
     if (path.isEmpty() || !dir.exists())
         return;
 
+    if (auto index = ui->comboFolder->findData(dir.path()); index >= 0)
+        ui->comboFolder->removeItem(index);
+
     ui->comboFolder->insertItem(0, dir.dirName(), dir.path());
     ui->comboFolder->setCurrentIndex(0);
     while (ui->comboFolder->count() > 10)
@@ -281,8 +285,9 @@ void MainWindow::addFolder(const QString &path)
 
 void MainWindow::updateScanButtons()
 {
-    ui->buttonPreview->setEnabled(mScanningItem == nullptr);
-    ui->buttonScan->setEnabled(mScanningItem == nullptr);
+    const auto canScan = (mScanner && !mScanningItem);
+    ui->buttonPreview->setEnabled(canScan);
+    ui->buttonScan->setEnabled(canScan);
 }
 
 void MainWindow::updateSaveButton()

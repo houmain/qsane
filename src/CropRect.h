@@ -8,11 +8,13 @@ class CropRect : public QGraphicsObject
 public:
     explicit CropRect(QGraphicsItem *parent = 0);
     bool isTransforming() const;
-    void startResize();
+    void startRect(const QPointF &position);
     void setBounds(const QRectF &bounds);
-    QRectF bounds() const;
+    const QRectF &bounds() const { return mBounds; }
     void setMaximumBounds(const QRectF &bounds);
     QRectF boundingRect() const override;
+    void setHandleSize(qreal handleSize) { mHandleSize = handleSize; }
+    qreal handleSize() const { return mHandleSize; }
 
 Q_SIGNALS:
     void transforming(const QRectF &rect);
@@ -28,8 +30,9 @@ protected:
 
 private:
     QRectF mMaximumBounds{ };
-    QRectF mBoundingRect{ };
+    QRectF mBounds{ };
     int mDirX{ };
     int mDirY{ };
     QPointF mMouseOffset{ };
+    qreal mHandleSize{ 1 };
 };

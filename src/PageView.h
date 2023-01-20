@@ -11,6 +11,7 @@ public:
 
 Q_SIGNALS:
     void mousePressed(const QPointF &position);
+    void zoomChanged(double scale);
 
 protected:
     void wheelEvent(QWheelEvent *event) override;

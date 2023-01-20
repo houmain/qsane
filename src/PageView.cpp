@@ -96,6 +96,8 @@ void PageView::setZoom(int zoom) {
     mZoom = zoom;
     auto scale = std::pow(1.25, zoom);
     updateTransform(scale);
+
+    Q_EMIT zoomChanged(scale);
 }
 
 void PageView::updateTransform(double scale)
