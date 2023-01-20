@@ -33,8 +33,6 @@ QRectF GraphicsImageItem::boundingRect() const
 
 void GraphicsImageItem::setNextScanLine(const QByteArray &scanline)
 {
-    prepareGeometryChange();
-
     const auto y = mNextScanLine++;
     if (y < mImage.height()) {
         std::memcpy(mImage.scanLine(y), scanline.data(), scanline.size());

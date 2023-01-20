@@ -86,6 +86,7 @@ void MainWindow::readSettings()
     else if (s.value("maximized").toBool())
         showMaximized();
 
+    mResolution = s.value("resolution").toDouble();
     ui->indexSeparator->setText(s.value("indexSeparator", " ").toString());
     ui->checkBoxIndexed->setChecked(s.value("indexed").toBool());
     const auto folders = s.value("recentFolders", QStringList()).toStringList();
@@ -103,7 +104,7 @@ void MainWindow::writeSettings()
         s.setValue("maximized", isMaximized());
     s.setValue("state", saveState());
 
-    s.setValue("resolution", ui->comboResolution->currentText().toInt());
+    s.setValue("resolution", mResolution);
     s.setValue("indexSeparator", ui->indexSeparator->text());
     s.setValue("indexed", ui->checkBoxIndexed->isChecked());
     auto folders = QStringList();
@@ -161,7 +162,11 @@ void MainWindow::openScanner(const QString &deviceName)
             this, &MainWindow::refreshControls);
 
         refreshControls();
-        ui->comboResolution->setCurrentText(mSettings->value("resolution").toString());
+
+        // ensure scanner has selected resolution
+        const auto resolution = mScanner->getResolution();
+        if (resolution.x() != mResolution || resolution.y() != mResolution)
+            mScanner->setResolution({ mResolution, mResolution });
     }
     else {
         QMessageBox(QMessageBox::Warning, QCoreApplication::applicationName(),
@@ -187,12 +192,11 @@ void MainWindow::refreshControls()
         this, &MainWindow::handleCropRectTransforming);
 
     const auto resolutions = mScanner->getUniformResolutions();
-    const auto resolution = mScanner->getResolution();
     ui->comboResolution->clear();
     for (auto resolution : resolutions)
         ui->comboResolution->addItem(QString::number(resolution), resolution);
-    ui->comboResolution->setCurrentText(QString::number(
-        std::min(resolution.x(), resolution.y())));
+    ui->comboResolution->setCurrentIndex(
+        ui->comboResolution->findData(mResolution));
 
     const auto maximumBounds = mScanner->getMaximumBounds();
     ui->pageView->setBounds(maximumBounds);
@@ -207,19 +211,23 @@ void MainWindow::refreshControls()
 void MainWindow::handleResolutionChanged(int index)
 {
     const auto resolution = ui->comboResolution->itemData(index).toDouble();
-    if (resolution)
+    if (resolution) {
+        mResolution = resolution;
         mScanner->setResolution({ resolution, resolution });
+    }
 }
 
 void MainWindow::handlePageViewMousePressed(const QPointF &position)
 {
     mScene->addItem(mCropRect);
     mCropRect->startRect(position);
+    updateScanButtons();
 }
 
 void MainWindow::handleCropRectTransforming(const QRectF &bounds)
 {
     mScanner->setBounds(bounds);
+    updateScanButtons();
 }
 
 void MainWindow::preview()
@@ -287,7 +295,7 @@ void MainWindow::updateScanButtons()
 {
     const auto canScan = (mScanner && !mScanningItem);
     ui->buttonPreview->setEnabled(canScan);
-    ui->buttonScan->setEnabled(canScan);
+    ui->buttonScan->setEnabled(canScan && !mCropRect->bounds().isEmpty());
 }
 
 void MainWindow::updateSaveButton()

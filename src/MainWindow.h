@@ -62,4 +62,5 @@ private:
     GraphicsImageItem *mPreviewItem{ };
     GraphicsImageItem *mImageItem{ };
     GraphicsImageItem *mScanningItem{ };
+    double mResolution{ };
 };
