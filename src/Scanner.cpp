@@ -5,6 +5,7 @@ namespace
 {
     namespace WellKnownOption
     {
+        const auto source = QStringLiteral("source");
         const auto preview = QStringLiteral("preview");
         const auto resolution = QStringLiteral("resolution");
         const auto x_resolution = QStringLiteral("x-resolution");
@@ -93,6 +94,16 @@ void Scanner::cancelScan()
     QtSaneScanner::cancelScan();
 }
 
+void Scanner::setSource(const QString &source)
+{
+    setOptionValue(WellKnownOption::source, source);
+}
+
+QString Scanner::getSource() const
+{
+    return getOptionValue(WellKnownOption::source).toString();
+}
+
 void Scanner::setResolution(const QPointF &res)
 {
     setOptionValue(WellKnownOption::resolution, std::min(res.x(), res.y()));
@@ -111,6 +122,15 @@ QPointF Scanner::getResolution() const
     if (auto y_resolution = findOption(WellKnownOption::y_resolution))
         y_res = y_resolution->value().toDouble();
     return { x_res, y_res };
+}
+
+QStringList Scanner::getSources() const
+{
+    auto list = QStringList();
+    const auto sources = findOption(WellKnownOption::source);
+    for (const auto &value : sources->allowedValues())
+        list.append(value.toString());
+    return list;
 }
 
 QList<double> Scanner::getUniformResolutions() const

@@ -37,6 +37,7 @@ private Q_SLOTS:
     void handleScanStarted(QImage image);
     void handleScanLineScanned(QByteArray scanLine);
     void handleScanComplete(bool succeeded);
+    void handleSourceChanged(int index);
     void handleResolutionChanged(int index);
     void handleCropRectTransforming(const QRectF &);
     void handlePageViewMousePressed(const QPointF &position);
@@ -63,4 +64,5 @@ private:
     GraphicsImageItem *mImageItem{ };
     GraphicsImageItem *mScanningItem{ };
     double mResolution{ };
+    QString mSource;
 };

@@ -12,6 +12,18 @@
         <translation>Auflösung</translation>
     </message>
     <message>
+        <source>Source</source>
+        <translation>Quelle</translation>
+    </message>
+    <message>
+        <source>Flatbed</source>
+        <translation>Flachbett</translation>
+    </message>
+    <message>
+        <source>Transparency Unit</source>
+        <translation>Durchlichtaufsatz</translation>
+    </message>
+    <message>
         <source>Preview</source>
         <translation>Vorschau</translation>
     </message>

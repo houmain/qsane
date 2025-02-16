@@ -86,6 +86,7 @@ void MainWindow::readSettings()
     else if (s.value("maximized").toBool())
         showMaximized();
 
+    mSource = s.value("source").toString();
     mResolution = s.value("resolution").toDouble();
     ui->indexSeparator->setText(s.value("indexSeparator", " ").toString());
     ui->checkBoxIndexed->setChecked(s.value("indexed").toBool());
@@ -104,6 +105,7 @@ void MainWindow::writeSettings()
         s.setValue("maximized", isMaximized());
     s.setValue("state", saveState());
 
+    s.setValue("source", mSource);
     s.setValue("resolution", mResolution);
     s.setValue("indexSeparator", ui->indexSeparator->text());
     s.setValue("indexed", ui->checkBoxIndexed->isChecked());
@@ -163,7 +165,9 @@ void MainWindow::openScanner(const QString &deviceName)
 
         refreshControls();
 
-        // ensure scanner has selected resolution
+        if (mScanner->getSource() != mSource)
+            mScanner->setSource(mSource);
+
         const auto resolution = mScanner->getResolution();
         if (resolution.x() != mResolution || resolution.y() != mResolution)
             mScanner->setResolution({ mResolution, mResolution });
@@ -186,10 +190,18 @@ void MainWindow::closeScanner()
 
 void MainWindow::refreshControls()
 {
+    disconnect(ui->comboSource, &QComboBox::currentIndexChanged,
+        this, &MainWindow::handleSourceChanged);
     disconnect(ui->comboResolution, &QComboBox::currentIndexChanged,
         this, &MainWindow::handleResolutionChanged);
     disconnect(mCropRect, &CropRect::transforming,
         this, &MainWindow::handleCropRectTransforming);
+
+    ui->comboSource->clear();
+    for (const auto &source : mScanner->getSources())
+        ui->comboSource->addItem(tr(qPrintable(source)), source);
+    ui->comboSource->setCurrentIndex(
+        ui->comboSource->findData(mScanner->getSource()));
 
     const auto resolutions = mScanner->getUniformResolutions();
     ui->comboResolution->clear();
@@ -202,10 +214,24 @@ void MainWindow::refreshControls()
     ui->pageView->setBounds(maximumBounds);
     mCropRect->setMaximumBounds(maximumBounds);
 
+    connect(ui->comboSource, &QComboBox::currentIndexChanged,
+        this, &MainWindow::handleSourceChanged);
     connect(ui->comboResolution, &QComboBox::currentIndexChanged,
         this, &MainWindow::handleResolutionChanged);
     connect(mCropRect, &CropRect::transforming,
         this, &MainWindow::handleCropRectTransforming);
+}
+
+void MainWindow::handleSourceChanged(int index)
+{
+    const auto source = ui->comboSource->itemData(index).toString();
+    if (!source.isEmpty()) {
+        mSource = source;
+        mScanner->setSource(source);
+
+        mImageItem->clear();
+        mCropRect->setBounds({});
+    }
 }
 
 void MainWindow::handleResolutionChanged(int index)
