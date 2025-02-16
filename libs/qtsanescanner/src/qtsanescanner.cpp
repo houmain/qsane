@@ -139,6 +139,8 @@ void QtSaneScanner::Option::update(const OptionDescriptor &desc)
     }
 
     switch (desc.constraint_type) {
+        case SANE_CONSTRAINT_NONE:
+            break;
         case SANE_CONSTRAINT_RANGE:
             mAllowedRange = {
                 toValue(desc.type, desc.constraint.range->min),
@@ -214,8 +216,25 @@ QImage QtSaneScanner::startScan()
     }
 
     mBytesPerLine = parameters.bytes_per_line;
+
     auto format = QImage::Format{ };
-    format = QImage::Format_RGB888;
+    if (parameters.format == SANE_FRAME_RGB) {
+        switch (parameters.depth) {
+            case 8: format = QImage::Format_RGB888; break;
+            case 16: format = QImage::Format_RGBX64; break;
+        }
+    }
+    else {
+        switch (parameters.depth) {
+            case 1: format = QImage::Format_Mono; break;
+            case 8: format = QImage::Format_Grayscale8; break;
+            case 16: format = QImage::Format_Grayscale16; break;
+        }
+    }
+    if (format == QImage::Format_Invalid) {
+        error(result, "unsupported format");
+        return { };
+    }
     const auto size = QSize(parameters.pixels_per_line, parameters.lines);
     return QImage(size, format);
 }
@@ -351,6 +370,10 @@ void QtSaneScanner::setOptionValue(int index, bool *reloadOptions)
             setData(buffer.data());
             break;
         }
+
+        case SANE_TYPE_GROUP:
+        case SANE_TYPE_BUTTON:
+            break;
     }
 
     if (info & SANE_INFO_RELOAD_OPTIONS) {

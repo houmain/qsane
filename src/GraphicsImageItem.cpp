@@ -34,10 +34,28 @@ QRectF GraphicsImageItem::boundingRect() const
 void GraphicsImageItem::setNextScanLine(const QByteArray &scanline)
 {
     const auto y = mNextScanLine++;
-    if (y < mImage.height()) {
+    if (y >= mImage.height())
+        return;
+
+    if (scanline.size() == mImage.bytesPerLine()) {
         std::memcpy(mImage.scanLine(y), scanline.data(), scanline.size());
-        update(0, y, mImage.width(), 1);
     }
+    else if (mImage.format() == QImage::Format_RGBX64 &&
+             scanline.size() >= mImage.width() * 3 * sizeof(uint16_t)) {
+        auto destRGBX = reinterpret_cast<uint16_t*>(mImage.scanLine(y));
+        auto sourceRGB = reinterpret_cast<const uint16_t*>(scanline.data());
+        const auto w = mImage.width();
+        for (auto x = 0; x < w; ++x) {
+            *destRGBX++ = *sourceRGB++;
+            *destRGBX++ = *sourceRGB++;
+            *destRGBX++ = *sourceRGB++;
+            *destRGBX++ = 0xFFFF;
+        }
+    }
+    else {
+        std::memset(mImage.scanLine(y), 0x00, mImage.bytesPerLine());
+    }
+    update(0, y, mImage.width(), 1);
 }
 
 void GraphicsImageItem::paint(QPainter *painter,
